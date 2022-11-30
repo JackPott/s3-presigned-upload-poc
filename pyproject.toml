@@ -1,0 +1,10 @@
+[tool.poetry]
+name = "s3upload"
+version = "0.1.0"
+description = "s3 upload test"
+authors = ["Chris Austin (jackpott@gmail.com)"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+flask = "^2.1.2"
+boto3 = "^1.24.22"

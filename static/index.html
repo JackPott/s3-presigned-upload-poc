@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <h1>S3 upload/download test</h1>
+    <h2>1. Get a pre-signed URL</h2>
+    <p>
+      Enter a filename, backend will send an authenticated request for a
+      presigned PUT URL. No sanitation on this so don't be silly!
+    </p>
+    <input id="filename" name="filename" type="text" />
+    <input type="submit" id="filename_submit" />
+
+    <pre id="signed_url">Waiting for URL</pre>
+
+    <h2>2. Put a file to that URL</h2>
+    <p>Select a file, and PUT it directly to that URL</p>
+    <input type="file" id="real_file" name="real_file" />
+    <input type="submit" id="real_file_submit" />
+
+    <h2>3. Join it together?</h2>
+    <p>
+      <a
+        href="https://medium.com/@kevinwu/client-side-file-upload-to-s3-using-axios-c9363ec7b530"
+        >medium.com/@kevinwu/client-side-file-upload-to-s3-using-axios</a
+      >
+    </p>
+    <p>
+      This blog shows off some draggy droppy implementation of the same thing,
+      automatically sets the filename etc. In our app its likely we would want
+      to enforce some file path/prefix on the S3 path based on ProductAccountRef
+      or CommsEntityId or date etc
+    </p>
+
+    <h2>List bucket objects</h2>
+    <p>
+      To show its working there is a method on the backend to list all bucket
+      objects. The backend creates a pre-signed URL for each before returning
+      the results to demonstrate the client can download the files without any
+      authorisation.
+    </p>
+    <input
+      type="button"
+      id="refresh_list"
+      name="refresh_list"
+      value="Refresh"
+    />
+    <ul id="object_list"></ul>
+
+    <h2>Docs</h2>
+    <p>
+      Backend has two endpoints you can play with: <br />
+      - <a href="/list_objects">GET /list_objects</a> to show everything in the
+      bucket<br />
+      - <a href="/get_upload_url/test">GET /get_upload_url/{key}</a> to generate
+      a pre-signed upload URL. Key is basically the filename <br />
+      -
+      <a
+        href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/PresignedUrlUploadObject.html"
+        >AWS docs</a
+      >
+    </p>
+    <p>
+      The bucket this is connected to has no public access, you can prove this
+      by trying to get one of the uploaded files from:
+      https://999999999999-upload-test.s3.eu-west-2.amazonaws.com/filename.ext
+    </p>
+
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.27.2/axios.js"
+      integrity="sha512-rozBdNtS7jw9BlC76YF1FQGjz17qQ0J/Vu9ZCFIW374sEy4EZRbRcUZa2RU/MZ90X2mnLU56F75VfdToGV0RiA=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+    <script type="text/javascript">
+      document
+        .getElementById("filename_submit")
+        .addEventListener("click", get_upload_url);
+
+      document
+        .getElementById("real_file_submit")
+        .addEventListener("click", put_file);
+
+      document
+        .getElementById("refresh_list")
+        .addEventListener("click", list_objects);
+
+      // Calls backend to get pre-signed URL which a file can be PUT to
+      // This URL encodes everything including final filename, and afaik can't
+      // be overriden by the client so is pretty safe
+      function get_upload_url(event) {
+        let filename = document.getElementById("filename").value;
+        console.log("Filename was set as: " + filename);
+        // Send filename to backend
+        response = axios.get("/get_upload_url/" + filename).then((response) => {
+          console.log("Got response: " + response);
+          // Store and display URL in page
+          let signed_url = document.getElementById("signed_url");
+          signed_url.textContent = response.data;
+        });
+      }
+
+      // Upload the file asyncronously. Can't use the default form submit/POST behaviour as
+      // we need to send it to our special URL
+      // Setting the content type/MIME appears to be important. Also requires bucket CORS
+      // policy to be set for it to work correctly.
+      // https://stackoverflow.com/a/67758064
+      function put_file(event) {
+        // https://medium.com/@kevinwu/client-side-file-upload-to-s3-using-axios-c9363ec7b530
+        let file = document.getElementById("real_file").files[0];
+        let signed_url = document.getElementById("signed_url");
+        let options = {
+          headers: {
+            "Content-Type": file.type,
+          },
+        };
+        console.log("File type is: " + file.type);
+        console.log(file);
+
+        response = axios
+          .put(signed_url.textContent, file, options)
+          .then((response) => {
+            console.log(response);
+          })
+          .catch(function (err) {
+            console.log(err);
+          });
+      }
+
+      // To prove it works we ask the backend for a list of objects in the bucket
+      // Backend also generates pre-signed download links for each object so we can
+      // get the file back out again, even though the bucekt is private
+      function list_objects(event) {
+        let ul = document.getElementById("object_list");
+        response = axios
+          .get("/list_objects")
+          .then((response) => {
+            console.log(response);
+            // Clear the list
+            ul.innerHTML = "";
+
+            let list = response.data.file_list;
+            list.forEach((x, i) => {
+              console.log(x);
+              // Create a <li><a href="the_url">file_key</a></li> and append to the UL
+              let li = document.createElement("li");
+              let a = document.createElement("a");
+              a.textContent = x.key;
+              a.setAttribute("href", x.url);
+              li.appendChild(a);
+              ul.appendChild(li);
+            });
+          })
+          .catch(function (err) {
+            console.log(err);
+          });
+      }
+    </script>
+  </body>
+</html>
